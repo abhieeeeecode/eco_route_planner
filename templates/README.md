@@ -22,11 +22,3 @@ python app.py
 
 ---
 
-# 🐙 PART 2: UPLOAD TO GITHUB (STEP-BY-STEP)
-
-### 🔹 STEP 3: Initialize Git (in VS Code terminal)
-
-```bash
-git init
-git add .
-git commit -m "Initial commit - Eco Route Planner"
