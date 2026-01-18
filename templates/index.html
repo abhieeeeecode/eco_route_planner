@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Eco Route Planner</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+/* ========== BODY & LAYOUT ========== */
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    display: flex;
+    flex-direction: row;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #dcedc8, #a5d6a7);
+    transition: background 0.5s ease;
+}
+#map { width: 70%; height: 100vh; }
+#panel {
+    width: 30%;
+    padding: 24px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    transition: background 0.5s ease, color 0.5s ease;
+}
+
+/* ========== GLASSMORPHISM CARDS ========== */
+.card {
+    background: rgba(255,255,255,0.25);
+    backdrop-filter: blur(10px);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+.card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #4e944f;
+}
+.card-value {
+    font-size: 26px;
+    font-weight: bold;
+    margin-top: 6px;
+    color: #1b5e20;
+}
+
+/* ========== ECO BAR ========== */
+.eco-bar {
+    height: 10px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 8px;
+    margin-top: 12px;
+    overflow: hidden;
+}
+.eco-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #66bb6a, #1b5e20);
+    transition: width 0.8s ease;
+}
+
+/* ========== BUTTONS ========== */
+button {
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #1b5e20, #43a047);
+    color: white;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+    transition: transform 0.3s, background 0.3s;
+}
+button:hover {
+    transform: scale(1.02);
+    background: linear-gradient(135deg, #2e7d32, #66bb6a);
+}
+
+/* ========== HEADER ========== */
+h2 {
+    text-align: center;
+    font-weight: 700;
+    color: #2e7d32;
+    margin-bottom: 20px;
+}
+
+/* ========== ROUTE LEGEND ========== */
+.legend {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    font-size: 14px;
+}
+.legend-color {
+    width: 20px;
+    height: 10px;
+    border-radius: 4px;
+}
+
+/* ========== DARK MODE ========== */
+body.dark {
+    background: linear-gradient(135deg, #1b262c, #0f4c75);
+}
+body.dark #panel { background: rgba(0,0,0,0.5); color: #c8e6c9; }
+body.dark .card { background: rgba(255,255,255,0.1); color: #c8e6c9; }
+body.dark .card-value { color: #c8e6c9; }
+body.dark .eco-fill { background: linear-gradient(90deg, #43a047, #1b5e20); }
+</style>
+</head>
+<body>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<!-- DASHBOARD PANEL -->
+<div id="panel">
+<h2>NAV BHARAT ROUTE 🌍</h2>
+<h2>Peak Navigation,Made in India</h2>
+
+<div class="card">
+    <div class="card-title">🛣 DISTANCE</div>
+    <div class="card-value" id="distance">-- km</div>
+</div>
+
+<div class="card">
+    <div class="card-title">⛽ FUEL CONSUMPTION</div>
+    <div class="card-value" id="fuel">-- L</div>
+</div>
+
+<div class="card">
+    <div class="card-title">🌍 CO₂ EMISSIONS</div>
+    <div class="card-value" id="co2">-- kg</div>
+</div>
+
+<div class="card">
+    <div class="card-title">🌿 ECO SCORE</div>
+    <div class="card-value" id="eco">-- /100</div>
+    <div class="eco-bar"><div class="eco-fill" id="ecoFill"></div></div>
+</div>
+
+<div class="card">
+    <div class="card-title">🚲 SUSTAINABLE COMPAIRISION</div>
+    <div class="card-value" id="saved">CO₂ Saved: -- kg</div>
+</div>
+
+<div class="legend">
+    <div class="legend-color" style="background: green;"></div> Eco Route
+    <div class="legend-color" style="background: orange;"></div> Fast Route
+</div>
+
+<button onclick="resetMap()">🔄 Reset Route</button>
+<button onclick="toggleDark()">🌙 Toggle Dark Mode</button>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+let map = L.map("map").setView([28.6139,77.2090],12);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+
+let startMarker=null, endMarker=null;
+let routes=[];
+
+// Count-up animation helper
+function animateValue(id, start, end, duration) {
+    let obj = document.getElementById(id);
+    let range = end - start;
+    let increment = range / (duration / 20);
+    let current = start;
+    let stepTime = 20;
+    let timer = setInterval(() => {
+        current += increment;
+        obj.innerText = current.toFixed(2) + (id==="eco" ? "/100" : id==="distance" ? " km" : id==="fuel" ? " L" : " kg");
+        if((increment>0 && current>=end) || (increment<0 && current<=end)){
+            obj.innerText = end.toFixed(2) + (id==="eco" ? "/100" : id==="distance" ? " km" : id==="fuel" ? " L" : " kg");
+            clearInterval(timer);
+        }
+    }, stepTime);
+}
+
+map.on("click", e => {
+    if(!startMarker){
+        startMarker = L.marker(e.latlng).addTo(map);
+    } else if(!endMarker){
+        endMarker = L.marker(e.latlng).addTo(map);
+        fetchRoute();
+    }
+});
+
+function fetchRoute(){
+fetch("/route",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ start:startMarker.getLatLng(), end:endMarker.getLatLng() })
+})
+.then(res=>res.json())
+.then(data=>{
+    data.routes.forEach((r,i)=>{
+        let coords = r.geometry.coordinates.map(c=>[c[1],c[0]]);
+        let color = i==0 ? "#00e676":"#ffab00";
+        routes.push(L.polyline(coords,{color,weight:5}).addTo(map));
+    });
+    map.fitBounds(routes[0].getBounds());
+    calculate(data.routes[0]);
+});
+}
+
+function calculate(route){
+    let km = route.distance/1000;
+    let timeMin = route.duration/60;
+    let idleFactor = timeMin/60;
+    let fuel = km*0.12 + idleFactor*0.3;
+    let co2 = fuel*2.31;
+    let ecoScore = Math.max(0,100 - co2*5);
+
+    animateValue("distance",0,km,800);
+    animateValue("fuel",0,fuel,800);
+    animateValue("co2",0,co2,800);
+    animateValue("eco",0,ecoScore,800);
+    document.getElementById("ecoFill").style.width = ecoScore + "%";
+    document.getElementById("saved").innerText = "CO₂ Saved vs Walk: "+co2.toFixed(2)+" kg";
+}
+
+function resetMap(){
+    if(startMarker) map.removeLayer(startMarker);
+    if(endMarker) map.removeLayer(endMarker);
+    routes.forEach(r=>map.removeLayer(r));
+    startMarker=endMarker=null;
+    routes=[];
+}
+
+// Dark mode toggle
+function toggleDark(){
+    document.body.classList.toggle("dark");
+}
+</script>
+</body>
+</html>
